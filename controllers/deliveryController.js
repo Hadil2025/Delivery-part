@@ -1,6 +1,10 @@
 const Delivery = require('../models/Delivery') 
 const PDFDocument = require('pdfkit')
 const fs = require('fs')
+const axios = require('axios')
+
+
+
 const generateDeliveryPDF = async (req, res) => {
   try {
     const { id } = req.params
@@ -27,6 +31,9 @@ const generateDeliveryPDF = async (req, res) => {
     doc.text(`Delivery Date: ${new Date(delivery.deliveryDate).toDateString()}`)
     doc.text(`Status: ${delivery.status}`)
     doc.text(`Customer Name: ${delivery.costumerName}`)
+    if (delivery.location) {
+      doc.text(`Location: Lat ${delivery.location.lat}, Lng ${delivery.location.lng}`);
+    }
     doc.end()
   } catch (error) {
     console.error('Error generating delivery PDF:', error)
@@ -34,17 +41,32 @@ const generateDeliveryPDF = async (req, res) => {
   }
 }
 
-
 // créer une livraison
 const createDelivery = async (req, res) => {
   try {
+    
     const {orderId, address, costumerName, status} = req.body
+
+    const response = await axios.get(`https://nominatim.openstreetmap.org/search`, {
+      params: {
+        q: address,
+        format: 'json',
+        limit: 1,
+      }
+    })
+    const location = response.data.length > 0
+      ? { lat: response.data[0].lat, lon: response.data[0].lon }
+      : { lat: null, lon: null }
+
     const newDelivery = new Delivery({
       address,
       deliveryDate:new Date(),
       costumerName,
       status,
       orderId,
+      location,
+      
+     
     })
     
     // sauvegarder dans db
@@ -53,6 +75,28 @@ const createDelivery = async (req, res) => {
   } catch (error) {
     console.error(error)
     res.status(400).json({ message: 'Error creating delivery', error })
+  }
+}
+
+const getLocationFromAddress = async (address) => {
+  try {
+    const response = await axios.get(`https://nominatim.openstreetmap.org/search`, {
+      params: {
+        q: address,
+        format: 'json',
+        limit: 1,
+      },
+    })
+    if (response.data.length > 0) {
+      return {
+        lat: response.data[0].lat,
+        lng: response.data[0].lon,
+      };
+    }
+    return null;
+  } catch (error) {
+    console.error('Error fetching location:', error);
+    return null;
   }
 }
 
@@ -84,12 +128,13 @@ const getDeliveryById = async (req, res) => {
 
 const updateDelivery = async (req, res) => {
   try {
-    const { orderId, address, deliveryDate, status } = req.body
-
+    const { orderId, address, costumerName, status } = req.body
+    
     // update with id
     const updatedDelivery = await Delivery.findByIdAndUpdate(
       req.params.id,
-      { orderId,address, deliveryDate, status },
+      { orderId,address, costumerName, status 
+       },
       { new: true }  
     )
 
@@ -186,5 +231,5 @@ const getDeliveriesByOrderId = async (req, res) => {
 }
 
 
-module.exports = {createDelivery,getAllDeliveries,updateDelivery,deleteDelivery,getDeliveryById,
-  getDeliveriesByAddress,getDeliveriesByDate,getDeliveriesByStatus,getDeliveriesByOrderId,generateDeliveryPDF}
+module.exports = {createDelivery,getAllDeliveries,updateDelivery,deleteDelivery,getDeliveryById,getDeliveriesByAddress,getDeliveriesByDate,
+  getDeliveriesByStatus,getDeliveriesByOrderId,generateDeliveryPDF, }
